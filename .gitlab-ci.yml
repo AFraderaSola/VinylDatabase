@@ -1,0 +1,174 @@
+default:
+  image: rocker/r-ver:4.5.1
+  interruptible: true
+  cache:
+    key:
+      files:
+        - renv.lock
+    paths:
+      - .ci/R/library/
+  before_script:
+    - mkdir -p "$R_LIBS_USER"
+
+stages:
+  - checks
+
+workflow:
+  name: "Repository checks"
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS'
+      when: never
+    - if: '$CI_COMMIT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+
+variables:
+  R_LIBS_USER: "$CI_PROJECT_DIR/.ci/R/library"
+  RENV_CONFIG_AUTOLOADER_ENABLED: "FALSE"
+  RENV_CONFIG_CACHE_ENABLED: "FALSE"
+  MAX_TRACKED_FILE_SIZE_MB: "5000"
+
+"R syntax":
+  stage: checks
+  script:
+    - >
+      Rscript --vanilla -e
+      'files <- unique(c(".Rprofile", ".EditREADME.R",
+      list.files(".", pattern = "[.][Rr]$", recursive = TRUE,
+      full.names = TRUE)));
+      files <- files[file.exists(files) & !grepl("(^|/)renv/", files)];
+      for (file in files) {
+        message("Parsing ", file);
+        parse(file = file)
+      }'
+
+"Repository hygiene":
+  stage: checks
+  before_script:
+    - apt-get update
+    - apt-get install -y --no-install-recommends git
+  script:
+    - >
+      Rscript --vanilla -e
+      'tracked <- system2("git", "ls-files", stdout = TRUE);
+      forbidden <- tracked[grepl(
+      "(^|/)([.]DS_Store|[.]Rhistory|[.]Rprofile[.]local[.]R|Thumbs[.]db)$|(^|/)([.]ci|[.]venv|[.]Rproj[.]user|__pycache__|[.]pytest_cache|[.]ipynb_checkpoints)/|(^|/)~[$][^/]+$|[.]py[co]$|~$",
+      tracked)];
+      if (length(forbidden)) {
+        stop("Forbidden tracked files:\n", paste(forbidden, collapse = "\n"))
+      };
+      threshold_mb <- as.numeric(Sys.getenv("MAX_TRACKED_FILE_SIZE_MB", "5000"));
+      sizes <- file.info(tracked)$size;
+      large <- which(!is.na(sizes) & sizes > threshold_mb * 1024^2);
+      if (length(large)) {
+        message("Warning only: tracked files above ", threshold_mb,
+        " MB (this does not fail the job):\n",
+        paste(sprintf("- %s (%.1f MB)", tracked[large],
+        sizes[large] / 1024^2), collapse = "\n"),
+        "\nReview whether these files belong in Git or in data storage.")
+      }'
+
+"Environment consistency":
+  image: ruby:3.3-alpine
+  stage: checks
+  before_script: []
+  cache: []
+  script:
+    - >
+      ruby -rjson -ryaml -e
+      'lock = JSON.parse(File.read("renv.lock"));
+      ci = YAML.load_file(".gitlab-ci.yml");
+      lock_version = lock.dig("R", "Version");
+      image = ci.dig("default", "image");
+      abort("renv.lock has no R version") unless lock_version;
+      abort("CI has no default image") unless image;
+      image_version = image.split(":").last;
+      abort("R version mismatch: lockfile #{lock_version}, CI #{image_version}")
+      unless lock_version == image_version;
+      expected_profile = [
+      "# Canonical project startup. Keep machine-specific settings in .Rprofile.local.R.",
+      "local({",
+      "  renv_activate <- file.path(\"renv\", \"activate.R\")",
+      "  if (file.exists(renv_activate)) source(renv_activate)",
+      "",
+      "  project_setup <- file.path(\"R\", \"project_setup.R\")",
+      "  if (file.exists(project_setup)) sys.source(project_setup, envir = .GlobalEnv)",
+      "",
+      "  if (file.exists(\".Rprofile.local.R\")) {",
+      "    sys.source(\".Rprofile.local.R\", envir = .GlobalEnv)",
+      "  }",
+      "})"];
+      actual_profile = File.readlines(".Rprofile", chomp: true);
+      abort(".Rprofile differs from the canonical project startup")
+      unless actual_profile == expected_profile;
+      abort("R/project_setup.R is missing")
+      unless File.file?("R/project_setup.R");
+      puts "renv.lock and CI both use R #{lock_version}";
+      puts ".Rprofile uses the canonical hybrid startup"'
+
+"README integrity":
+  stage: checks
+  variables:
+    GIT_DEPTH: "0"
+  before_script:
+    - mkdir -p "$R_LIBS_USER"
+    - apt-get update
+    - apt-get install -y --no-install-recommends git libuv1-dev
+  script:
+    - >
+      Rscript --vanilla -e
+      'required <- c("fs", "stringr");
+      if (!requireNamespace("renv", quietly = TRUE)) {
+        install.packages("renv", repos = "https://cran.rstudio.com")
+      };
+      renv::restore(project = ".", packages = required,
+      library = Sys.getenv("R_LIBS_USER"), prompt = FALSE)'
+    - >
+      Rscript --vanilla -e
+      'lines <- readLines("README.md", warn = FALSE);
+      if (!file.exists("CONTRIBUTING.md")) {
+        stop("CONTRIBUTING.md is missing.")
+      };
+      if (!any(grepl("[CONTRIBUTING.md](CONTRIBUTING.md)",
+      lines, fixed = TRUE))) {
+        stop("README.md does not link to CONTRIBUTING.md.")
+      };
+      marker_lines <- grep("AUTO-GEN:", lines, value = TRUE);
+      pattern <- "^<!-- AUTO-GEN:([A-Z0-9_]+):(START|END) -->$";
+      parts <- regmatches(marker_lines, regexec(pattern, marker_lines));
+      if (!length(parts) || any(lengths(parts) != 3L)) {
+        stop("README contains missing or malformed AUTO-GEN markers.")
+      };
+      tags <- vapply(parts, function(part) part[[2]], character(1));
+      types <- vapply(parts, function(part) part[[3]], character(1));
+      if (length(tags) %% 2L) {
+        stop("README contains an unmatched AUTO-GEN marker.")
+      };
+      odd <- seq.int(1L, length(tags), by = 2L);
+      even <- seq.int(2L, length(tags), by = 2L);
+      if (any(types[odd] != "START") ||
+      any(types[even] != "END") || any(tags[odd] != tags[even])) {
+        stop("AUTO-GEN markers must form adjacent START/END pairs.")
+      };
+      if (anyDuplicated(tags[odd])) {
+        stop("README contains duplicate AUTO-GEN sections.")
+      };
+      required <- c("PROJECT_TITLE", "FOLDER_STRUCTURE", "ANALYSIS_CHECKLIST",
+      "PROJECT_STATUS", "PROJECT_INFORMATION", "GIT_SECTION",
+      "REPRODUCIBILITY", "EDIT_README");
+      if (!all(required %in% tags)) {
+        stop("README is missing required generated sections: ",
+        paste(setdiff(required, tags), collapse = ", "))
+      };
+      required_starts <- match(paste0("<!-- AUTO-GEN:", required, ":START -->"), lines);
+      if (is.unsorted(required_starts, strictly = TRUE)) {
+        stop("Generated README sections are not in the expected order.")
+      }'
+    - cp README.md README.md.before-ci
+    - Rscript --vanilla .EditREADME.R
+    - diff -u README.md.before-ci README.md
+  artifacts:
+    when: on_failure
+    paths:
+      - README.md
+    expire_in: 1 week

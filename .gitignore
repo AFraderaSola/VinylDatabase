@@ -1,0 +1,15 @@
+.Rhistory
+.Rproj.user/
+.ci/
+__pycache__/
+.pytest_cache/
+.ipynb_checkpoints/
+*.py[cod]
+~$*
+*~
+.Rprofile.local.R
+.venv/
+renv/library/
+renv/python/
+.DS_Store
+Thumbs.db
