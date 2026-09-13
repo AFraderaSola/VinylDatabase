@@ -1,99 +1,19 @@
-# Contributing
+# Contributing to VinylDatabase
 
-Thank you for contributing to this scientific analysis repository.
+This is a personal vinyl collection managed from `input/Database.xlsx`.
 
-## Repository workflow
+## Collection changes
 
-- Work from the repository root unless a script explicitly documents another working directory.
-- Keep analysis scripts in the corresponding analysis folders.
-- Preserve the established Input and Output folder conventions.
-- Do not commit temporary, cache, or machine-specific files.
-- Do not redistribute controlled or patient-linked data.
+- Add records in Collection with Artist, Album and DateAddition; all three are mandatory. Fill in any other details you know.
+- Set each artist's genre and mood in Artists. Each mood needs at least six distinct albums; different pressings count once.
+- Use Shelf_Band to group solo artists with their band. The family shares a shelf genre and mood by artist majority; collection classifications stay individual.
+- Update Last_Played after listening. Confirm Discogs IDs only after checking the exact release or master.
+- Keep worksheet names and column headers intact. Close Excel before running the updater.
 
-## Project startup
+## Script changes
 
-The tracked `.Rprofile` activates the project-specific `renv` library, loads
-shared functions from `R/project_setup.R`, and then loads optional local
-settings.
+Use the project's R environment and restore dependencies with `renv::restore()` when needed. Run `source("update_vinyl_database.R")` from R or `Rscript --vanilla update_vinyl_database.R` from the project folder. Set `VINYL_OFFLINE=true` to disable MusicBrainz lookups. Leave DISCOGS_TOKEN unset to avoid Discogs requests during checks.
 
-Machine-specific paths and preferences belong in `.Rprofile.local.R`, which is
-ignored by Git. Analysis scripts must source shared project functions directly:
+Before committing, check that the updater runs, the input remains unchanged, and the shelf still groups artists correctly. Check rotation-only changes leave the collection and shelf outputs untouched. Rotation draws five albums per enabled genre, follows newest-first date quotas, and maximizes mood coverage with random choices. Generated outputs, local settings and package libraries stay outside Git.
 
-```r
-source("R/project_setup.R")
-```
-
-## R dependencies
-
-Restore the recorded R environment with:
-
-```r
-renv::restore()
-```
-
-After intentionally adding or updating a package, update the lockfile:
-
-```r
-renv::snapshot()
-```
-
-Commit `renv.lock` whenever shared R dependencies change.
-
-## Python dependencies
-
-Create the recorded Conda environment with:
-
-```bash
-conda env create -f python/environment.yml
-```
-
-Update `python/environment.yml` whenever shared Python dependencies change.
-
-## Data and outputs
-
-- Treat raw and patient-linked data according to the applicable access restrictions.
-- Do not modify raw data unless the change is intentional and documented.
-- Review large reports before committing them to avoid accidental duplicates.
-- Preserve intentionally empty project directories with `.gitkeep`.
-- Keep generated outputs beside the scripts and inputs defined by the existing project structure.
-
-## README updates
-
-After changing the project structure, analysis progress, contributor history, or
-project metadata, regenerate the README:
-
-```r
-source(".EditREADME.R")
-```
-
-When generator configuration changes, commit both `.EditREADME.R` and the
-regenerated `README.md`.
-
-## Before committing
-
-Confirm that:
-
-- Modified scripts parse without errors.
-- New dependencies are recorded.
-- `.Rprofile.local.R` and cache files remain untracked.
-- The README is current.
-- No controlled data or unintended large files have been added.
-- The automated repository checks pass.
-
-## Commit messages
-
-Use a concise, action-oriented title, for example:
-
-```text
-Update plasma preprocessing workflow
-```
-
-Use the commit description to explain why the change was needed and identify
-important effects on data, results, figures, or reproducibility.
-
-## Automated checks
-
-GitLab validates R syntax, repository hygiene, environment consistency, and
-README integrity. All checks should pass before changes are merged into the
-main branch.
-
+Edit `.EditREADME.R` to update the guide, then regenerate README.md. Commit both files, relevant script changes, the updated input database and state/rotation_history.rds to preserve rotation counts. Update renv.lock if dependencies change. Use a short commit message describing the actual change.

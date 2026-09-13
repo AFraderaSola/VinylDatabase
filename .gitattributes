@@ -1,2 +1,2 @@
-# Raw inputs are immutable data; avoid expensive text diffs and rename statistics.
-**/00_RAW/** -diff
+# Excel workbooks are binary files; do not use text diffs or merges.
+*.xlsx binary

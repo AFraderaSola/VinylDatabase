@@ -85,26 +85,9 @@ variables:
       image_version = image.split(":").last;
       abort("R version mismatch: lockfile #{lock_version}, CI #{image_version}")
       unless lock_version == image_version;
-      expected_profile = [
-      "# Canonical project startup. Keep machine-specific settings in .Rprofile.local.R.",
-      "local({",
-      "  renv_activate <- file.path(\"renv\", \"activate.R\")",
-      "  if (file.exists(renv_activate)) source(renv_activate)",
-      "",
-      "  project_setup <- file.path(\"R\", \"project_setup.R\")",
-      "  if (file.exists(project_setup)) sys.source(project_setup, envir = .GlobalEnv)",
-      "",
-      "  if (file.exists(\".Rprofile.local.R\")) {",
-      "    sys.source(\".Rprofile.local.R\", envir = .GlobalEnv)",
-      "  }",
-      "})"];
-      actual_profile = File.readlines(".Rprofile", chomp: true);
-      abort(".Rprofile differs from the canonical project startup")
-      unless actual_profile == expected_profile;
-      abort("R/project_setup.R is missing")
-      unless File.file?("R/project_setup.R");
-      puts "renv.lock and CI both use R #{lock_version}";
-      puts ".Rprofile uses the canonical hybrid startup"'
+      abort("renv/activate.R is missing") unless File.file?("renv/activate.R");
+      puts "renv.lock and CI both use R #{lock_version}"'
+
 
 "README integrity":
   stage: checks
@@ -112,27 +95,10 @@ variables:
     GIT_DEPTH: "0"
   before_script:
     - mkdir -p "$R_LIBS_USER"
-    - apt-get update
-    - apt-get install -y --no-install-recommends git libuv1-dev
   script:
     - >
       Rscript --vanilla -e
-      'required <- c("fs", "stringr");
-      if (!requireNamespace("renv", quietly = TRUE)) {
-        install.packages("renv", repos = "https://cran.rstudio.com")
-      };
-      renv::restore(project = ".", packages = required,
-      library = Sys.getenv("R_LIBS_USER"), prompt = FALSE)'
-    - >
-      Rscript --vanilla -e
       'lines <- readLines("README.md", warn = FALSE);
-      if (!file.exists("CONTRIBUTING.md")) {
-        stop("CONTRIBUTING.md is missing.")
-      };
-      if (!any(grepl("[CONTRIBUTING.md](CONTRIBUTING.md)",
-      lines, fixed = TRUE))) {
-        stop("README.md does not link to CONTRIBUTING.md.")
-      };
       marker_lines <- grep("AUTO-GEN:", lines, value = TRUE);
       pattern <- "^<!-- AUTO-GEN:([A-Z0-9_]+):(START|END) -->$";
       parts <- regmatches(marker_lines, regexec(pattern, marker_lines));
@@ -153,9 +119,7 @@ variables:
       if (anyDuplicated(tags[odd])) {
         stop("README contains duplicate AUTO-GEN sections.")
       };
-      required <- c("PROJECT_TITLE", "FOLDER_STRUCTURE", "ANALYSIS_CHECKLIST",
-      "PROJECT_STATUS", "PROJECT_INFORMATION", "GIT_SECTION",
-      "REPRODUCIBILITY", "EDIT_README");
+      required <- c("PROJECT_TITLE", "PROJECT_README");
       if (!all(required %in% tags)) {
         stop("README is missing required generated sections: ",
         paste(setdiff(required, tags), collapse = ", "))

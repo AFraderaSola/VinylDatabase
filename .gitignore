@@ -13,3 +13,13 @@ renv/library/
 renv/python/
 .DS_Store
 Thumbs.db
+
+# Local recovery copies; the working database is tracked in input/.
+backups/
+
+# Rebuild generated workbooks from input/Database.xlsx.
+output/
+renv/staging/
+
+# Transient rotation update lock.
+state/.rotation-lock/
