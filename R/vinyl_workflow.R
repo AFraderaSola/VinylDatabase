@@ -542,7 +542,8 @@ permanent_order <- function(records) {
         records$Year_Recording, normalize(records$Album), normalize(records$Edition),
         na.last = TRUE, method = "radix")
 }
-# Maximize distinct moods within date quotas; randomize equally good choices.
+# Maximize coverage of qualifying moods within fixed date quotas.
+# Pool rare moods together so a singleton never earns its own coverage bonus.
 rotation_mood_sample <- function(pool, date_group, quotas, priority_moods) {
   mood_group <- ifelse(pool$Mood %in% priority_moods, pool$Mood, "Other unprioritized moods")
   labels <- sort(unique(mood_group), method = "radix")
@@ -559,6 +560,8 @@ rotation_mood_sample <- function(pool, date_group, quotas, priority_moods) {
     }
     choices
   }
+  # Memoized search: remaining holds unfilled slots in each date group.
+  # Keep every best allocation, then randomly choose one during reconstruction.
   solve <- function(i, remaining) {
     if (i > length(labels)) return(list(score = if (all(remaining == 0L)) 0 else -Inf))
     key <- paste(c(i, remaining), collapse = ":")
@@ -609,12 +612,15 @@ select_rotation <- function(records, size = NULL, history = empty_rotation_histo
   for (genre in rotation_genres) {
     pool <- records[records$Genre == genre, , drop = FALSE]
     if (!nrow(pool)) { warning("No classified albums available for ", genre, "."); next }
+    # Eligibility uses the full genre, before cooldown/date filtering.
     mood_counts <- table(pool$Mood)
     priority_moods <- names(mood_counts)[mood_counts > 3L]
     target <- min(5L, nrow(pool))
     hit <- match(pool$Album_Key, history$albums$Album_Key)
     last_run <- history$albums$Last_Rotation_Run[hit]
     recent <- !is.na(last_run) & last_run == history$run
+    # Priority order: cooldown, addition-date quotas, then mood coverage.
+    # Only unavoidable repeats are readmitted, with lower counts preferred.
     available <- which(!recent)
     if (length(available) < target) {
       repeats <- which(recent)
@@ -626,6 +632,7 @@ select_rotation <- function(records, size = NULL, history = empty_rotation_histo
     dates <- sort(unique(pool$Addition_Date), decreasing = TRUE)
     group <- match(pool$Addition_Date, dates)
     capacity <- tabulate(group, nbins = length(dates))
+    # Reserve only three recency slots across dates, not three per date.
     quotas <- integer(length(dates)); left <- min(3L, target)
     for (j in seq_along(dates)) {
       quotas[[j]] <- min(capacity[[j]], left)
@@ -670,6 +677,7 @@ empty_rotation_history <- function() {
   list(version = 1L, run = 0L, albums = data.frame(Album_Key = character(),
        Rotation_Count = integer(), Last_Rotation_Run = integer(), stringsAsFactors = FALSE))
 }
+# One increment per distinct album per successful rotation, not per pressing.
 advance_rotation_history <- function(history, keys) {
   keys <- unique(keys)
   history$run <- history$run + 1L

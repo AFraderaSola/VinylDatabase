@@ -6,7 +6,7 @@ A personal vinyl collection managed in R from one Excel database, with artist-le
 
 ## Update the collection
 
-Only maintain **`input/Database.xlsx`**, with its Collection and Artists worksheets.
+Maintain collection data in **`input/Database.xlsx`**, with its Collection and Artists worksheets. Rotation toggles live at the top of `01_update_vinyl_database.R`; history is maintained automatically.
 
 **Minimum for every record:** enter `Artist`, `Album` and `DateAddition` in Collection. All three are mandatory. A missing or invalid addition date stops the update before lookups or output changes; dates are never invented. For example: `Parcels`, `Day/Night`, `2026-09-13`.
 
@@ -23,7 +23,7 @@ In Artists, keep one row per artist with your chosen `Genre` and `Mood`. An exis
 | Edition, Year_Pressing, notes and Discogs identifiers | Not guessed. Enter these yourself when known. |
 | Last_Played | Enter after listening. For multiple pressings of the same album, the latest supplied date applies to all of them. Selecting a rotation does not mark anything played. |
 
-Album-level subgenre takes precedence over the artist default. Filled album details are preserved. Missing genre, mood, year, subgenre or recording type sets `Review_Status` to Needs review. Missing genre or mood excludes an album from rotation; other missing details do not. Shelf placement uses the family rules below, with unresolved shelf sections placed last.
+Album-level subgenre takes precedence over the artist default. Filled album details are preserved. Missing genre, mood, year, subgenre or recording type sets `Review_Status` to Needs review. Missing genre or mood excludes an album from rotation; other optional missing details do not. Mandatory fields are always validated first. Shelf placement uses the family rules below, with unresolved shelf sections placed last.
 
 **Autofilled values appear only in outputs.** The input is never rewritten. Copy useful results back into the input if you want them saved for later runs; save accepted genre and mood suggestions in Artists.
 
@@ -31,16 +31,16 @@ Collection columns start with Artist, Album, Year and Edition, followed by Genre
 
 MusicBrainz lookups require an internet connection and `httr2`, but no API key. Only an unambiguous artist-and-album match is accepted. Set `Sys.setenv(VINYL_OFFLINE = "true")` to disable MusicBrainz lookups; supplied values and artist defaults still work. Discogs requests are separately controlled by confirmed IDs and a token, as described below.
 
-Save the database, close generated workbooks in Excel, and run from your project R session:
+Save and close the database and generated workbooks in Excel, and run from your project R session:
 
 ```r
-source("update_vinyl_database.R")
+source("01_update_vinyl_database.R")
 ```
 
 Or run from a terminal in the project folder:
 
 ```bash
-Rscript --vanilla update_vinyl_database.R
+Rscript --vanilla 01_update_vinyl_database.R
 ```
 
 The updater activates the project's R environment and creates four files in `output/`, using the input's theme, Arial font and compact layout:
@@ -60,18 +60,18 @@ Within each genre:
 
 1. Reserve **three slots for recent additions**. Take albums from the newest addition date first; if it has fewer than three, continue to the next newest date until three slots are filled. When a date has more albums than needed, choose randomly within the mood-coverage rule.
 2. Fill the other **two slots randomly from all dates not used for those first three**. Exclude each used date entirely, including its unselected albums. These two slots have no date preference.
-3. If the unused dates cannot supply two albums, fill the shortage from unselected albums on the used dates, newest first. This fallback ensures five picks with the current single-date collection.
+3. If the unused dates cannot supply two albums, fill the shortage from unselected albums on the used dates, newest first. This also permits five picks when all eligible albums share one date.
 4. Within these quotas, prioritize mood coverage only for genre/mood groups containing at least four distinct albums in the collection. Smaller mood groups remain eligible for random selection but receive no coverage bonus. Maximize coverage among the qualifying moods. When all moods cannot fit, choose among equally good combinations at random, then choose albums randomly within each combination.
 
 Date priority takes precedence over mood coverage. Each run excludes albums selected in the previous rotation before applying date quotas. If fewer than five alternatives remain in a genre, reuse only the necessary number of previous picks, preferring lower rotation counts and breaking ties randomly. Energy, danceability and listening history do not affect selection, and the script does not mark albums as played. If a genre has fewer than five classified albums, include all available albums and report the shortage rather than borrowing slots from another genre.
 
 Use `--rotation-only` to redraw rotation and its metadata without changing the collection and permanent shelf files. The total is calculated as five times the number of enabled genres. The optional `--rotation-size=N` must match that total; normally omit it.
 
-Rotation history is maintained automatically in `state/rotation_history.rds`. Each successful update, including `--rotation-only`, advances the run number and increments Rotation_Count once per selected album, regardless of pressing. Last_Rotation_Run records its latest selected run; both columns appear in metadata. The first run seeds history from the existing rotation file, counting those albums once; earlier rotations cannot be reconstructed. Keep the state file (and commit it with the database) to preserve history across machines. Deleting it resets known counts. History does not modify the input or Last_Played. Failed output installation restores previous outputs and history.
+Rotation history is maintained automatically in `state/rotation_history.rds`. Each successful update, including `--rotation-only`, advances the run number and increments Rotation_Count once per selected album, regardless of pressing. Last_Rotation_Run records its latest selected run; both columns appear in metadata. The first run seeds history from the existing rotation file, counting those albums once; earlier rotations cannot be reconstructed. Keep the state file (and commit it with the database) to preserve history across machines. If it is deleted, the next run seeds new history from the existing rotation file. Use the reset toggle for a complete reset. History does not modify the input or Last_Played. Failed output installation restores previous outputs and history.
 
 ### Settings when using source()
 
-Edit the settings near the top of `update_vinyl_database.R`:
+Edit the settings near the top of `01_update_vinyl_database.R`:
 
 ```r
 reset_rotation_history <- FALSE
@@ -84,17 +84,17 @@ rotation_genres <- c(
 )
 ```
 
-Then run `source("update_vinyl_database.R")`. Set a genre to TRUE to include it or FALSE to exclude it; at least one must be enabled. Every enabled genre follows the same date quotas, mood threshold and cooldown rules. Disabled genres remain in the collection and permanent shelf, and keep their saved counters.
+Then run `source("01_update_vinyl_database.R")`. Set a genre to TRUE to include it or FALSE to exclude it; at least one must be enabled. Every enabled genre follows the same date quotas, mood threshold and cooldown rules. Disabled genres remain in the collection and permanent shelf, and keep their saved counters.
 
 For a reset, change `reset_rotation_history` to TRUE and source the script. Reset clears history for **all genres**, ignores the previous rotation file and generates run 1 for the enabled genres. Selected albums get count 1 and the others count 0. **Change the toggle back to FALSE afterwards**, or subsequent runs will reset again. A failed update leaves saved history intact.
 
 The terminal option remains available:
 
 ```bash
-Rscript --vanilla update_vinyl_database.R --rotation-only --reset-rotation-history
+Rscript --vanilla 01_update_vinyl_database.R --rotation-only --reset-rotation-history
 ```
 
-Technical details stay in Vinyl_Metadata.xlsx. Collection_Row identifies the input record, Shelf_Order links to the permanent shelf, and Rotation_Reason records the addition date used for the random selection. Run a full update after changing the collection to refresh the permanent shelf too.
+Technical details stay in Vinyl_Metadata.xlsx. Collection_Row identifies the input record, Shelf_Order links to the permanent shelf, and Rotation_Reason records the addition date used for the random selection. During rotation-only updates, metadata shelf positions are recalculated, but the saved permanent shelf is not refreshed. Run a full update after changing the collection to keep them aligned.
 
 ## Shelf order
 
@@ -116,22 +116,37 @@ Moods are subjective artist-level listening choices, not measurements from audio
 - **Reflective:** thoughtful or contemplative.
 - **Warm:** relaxed, welcoming or soulful.
 
+## Collection plots
+
+Run `source("02_plot_vinyl_database.R")` to refresh six PDF charts in `output/plots/`. This is independent of the updater: it reads the current input and saved rotation history without online requests, selecting a new rotation or changing counters.
+
+- **Collection by genre:** distinct album counts using each artist's classification.
+- **Moods by genre:** album counts for every genre/mood combination.
+- **Collection growth:** cumulative albums by first addition date; multiple pressings count once.
+- **Release decades:** original release years, excluding unknown years.
+- **Most-collected artists:** the top 15, with alphabetical tie-breaking.
+- **Rotation coverage:** a ranked dot plot of current picks and the most-selected albums (up to 15 per genre), highlighting the current rotation. Each panel summarizes how many albums have never rotated. Only genres represented in the latest saved rotation and still present in the database are shown; changing the genre toggles alone does not change this chart. Compare counts within each genre.
+
+Charts use ggplot2 and [MetBrewer](https://github.com/BlakeRMills/MetBrewer): five Archambault swatches without yellow or orange, reversed (direction -1), for genre colours (Classical / Soundtrack brick red, Electronic coral, Jazz / Blues plum, Pop deep purple, Rock blue) and Hokusai2 for the mood-count heatmap. They use saved input details and artist defaults; refresh and save missing details in the database if you want them reflected in the plots. A single addition date produces one growth point, not an inferred purchasing history.
+
 ## Project setup and folders
 
 Open this repository as your R project. Its `.Rprofile` activates `renv`. Restore the vinyl packages once in the project R console:
 
 ```r
-renv::restore(packages = c("readxl", "openxlsx", "zip", "xml2", "httr2"))
+renv::restore(packages = c("readxl", "openxlsx", "zip", "xml2", "httr2", "ggplot2", "MetBrewer"))
 ```
 
 The updater uses R only. Generated outputs, local environments and personal settings stay outside Git; `input/Database.xlsx` is tracked.
 
 ```text
 input/Database.xlsx           Your collection and artist settings
-output/                      Generated Excel files
+output/                      Generated Excel files and plots/ PDFs
 state/rotation_history.rds    Automatically maintained rotation counts
 R/vinyl_workflow.R            Collection, shelf and rotation functions
-update_vinyl_database.R       Run the update
+R/vinyl_plots.R               ggplot charts
+01_update_vinyl_database.R    Run the update
+02_plot_vinyl_database.R      Refresh charts without changing rotation
 renv.lock, renv/              R package environment
 .EditREADME.R                 Source for this README
 README.md                    Generated project guide

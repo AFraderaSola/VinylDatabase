@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-# Run with source("update_vinyl_database.R") or Rscript.
+# Run with source("01_update_vinyl_database.R") or Rscript.
 # All user-maintained data is in input/Database.xlsx.
 (function() {
   # EDIT THESE SETTINGS, then source this file.
@@ -46,7 +46,7 @@
   } else if (length(file_args)) {
     sub("^--file=", "", file_args[[1]])
   } else {
-    "update_vinyl_database.R"
+    "01_update_vinyl_database.R"
   }
   # With source(..., chdir = TRUE), the working directory may already be here.
   if (sourced && !file.exists(script) && file.exists(basename(script))) {
@@ -64,8 +64,8 @@
   }
   if ("--help" %in% args) {
     cat(
-      'In R: source("update_vinyl_database.R")\n',
-      "Terminal: Rscript update_vinyl_database.R [--rotation-only] [--rotation-size=N] [--reset-rotation-history]\n",
+      'In R: source("01_update_vinyl_database.R")\n',
+      "Terminal: Rscript 01_update_vinyl_database.R [--rotation-only] [--rotation-size=N] [--reset-rotation-history]\n",
       "Reads input/Database.xlsx and rebuilds workbooks in output/.\n"
     )
     return(invisible(NULL))

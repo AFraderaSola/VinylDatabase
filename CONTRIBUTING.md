@@ -12,7 +12,7 @@ This is a personal vinyl collection managed from `input/Database.xlsx`.
 
 ## Script changes
 
-Use the project's R environment and restore dependencies with `renv::restore()` when needed. Run `source("update_vinyl_database.R")` from R or `Rscript --vanilla update_vinyl_database.R` from the project folder. Set `VINYL_OFFLINE=true` to disable MusicBrainz lookups. Leave DISCOGS_TOKEN unset to avoid Discogs requests during checks.
+Use the project's R environment and restore dependencies with `renv::restore()` when needed. Run `source("01_update_vinyl_database.R")` from R or `Rscript --vanilla 01_update_vinyl_database.R` from the project folder. Set `VINYL_OFFLINE=true` to disable MusicBrainz lookups. Leave DISCOGS_TOKEN unset to avoid Discogs requests during checks.
 
 Before committing, check that the updater runs, the input remains unchanged, and the shelf still groups artists correctly. Check rotation-only changes leave the collection and shelf outputs untouched. Rotation draws five albums per enabled genre, follows newest-first date quotas, and maximizes mood coverage with random choices. Generated outputs, local settings and package libraries stay outside Git.
 
