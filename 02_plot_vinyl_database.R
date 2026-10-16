@@ -1,5 +1,9 @@
 #!/usr/bin/env Rscript
-# Refresh charts with source("02_plot_vinyl_database.R") or Rscript.
+# Read-only plotting entry point.
+#
+# Run with source("02_plot_vinyl_database.R") or Rscript. The script activates
+# renv and regenerates PDF charts from manual input plus saved metadata and
+# rotation state. It performs no online lookup and does not advance rotation.
 (function() {
   # source() supplies its filename in a call frame; Rscript uses --file.
   source_paths <- vapply(

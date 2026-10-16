@@ -1,4 +1,12 @@
-# Descriptive plots are read-only: no metadata requests or rotation draws.
+#' Generate read-only collection plots
+#'
+#' Reads manual input plus saved metadata and rotation history, then writes six
+#' PDF charts. The function performs no online requests, does not modify the
+#' input workbook and does not advance rotation history.
+#' @param input Path to `input/Database.xlsx`.
+#' @param history_path Path to generated rotation-history state.
+#' @param output_dir Directory for generated PDF charts.
+#' @return A named list of `ggplot` objects, invisibly.
 plot_vinyl_database <- function(input, history_path, output_dir) {
   for (package in c("ggplot2", "MetBrewer"))
     if (!requireNamespace(package, quietly = TRUE)) stop("Restore plotting dependency: ", package)
@@ -8,21 +16,28 @@ plot_vinyl_database <- function(input, history_path, output_dir) {
   Sys.setenv(VINYL_OFFLINE = "true")
   on.exit(if (is.na(old_offline)) Sys.unsetenv("VINYL_OFFLINE") else
     Sys.setenv(VINYL_OFFLINE = old_offline), add = TRUE)
-  records <- read_database(input)
+  project_root <- dirname(dirname(normalizePath(input)))
+  database <- read_database(
+    input,
+    cache_path = file.path(project_root, "state", "metadata_cache.rds"),
+    online = FALSE
+  )
+  records <- database$records
   # Album counts and growth use the first acquired pressing of each album.
-  records <- records[order(records$Addition_Date, na.last = TRUE), , drop = FALSE]
+  records <- records[order(records$DateAddition, na.last = TRUE), , drop = FALSE]
   albums <- records[!duplicated(records$Album_Key), , drop = FALSE]
-  albums$Genre[is_missing(albums$Genre)] <- "Unclassified"
-  albums$Mood[is_missing(albums$Mood)] <- "Unclassified"
-  genre_levels <- c(genres, if ("Unclassified" %in% albums$Genre) "Unclassified")
-  mood_levels <- c(moods, if ("Unclassified" %in% albums$Mood) "Unclassified")
+  albums$Shelf_Genre[is_missing(albums$Shelf_Genre)] <- "Unclassified"
+  albums$Shelf_Mood[is_missing(albums$Shelf_Mood)] <- "Unclassified"
+  background <- "#FFFFFF"
+  genre_levels <- c(shelf_genres, if ("Unclassified" %in% albums$Shelf_Genre) "Unclassified")
+  mood_levels <- c(shelf_moods, if ("Unclassified" %in% albums$Shelf_Mood) "Unclassified")
   # Five original Archambault swatches, excluding yellow and orange, reversed (direction -1).
   archambault <- MetBrewer::met.brewer("Archambault")
-  colours <- setNames(rev(as.character(archambault[c(1, 2, 3, 4, 5)])), genres)
+  colours <- setNames(rev(as.character(archambault[c(1, 2, 3, 4, 5)])), shelf_genres)
   colours <- c(colours, Unclassified = "#999999")
   theme <- ggplot2::theme_minimal(base_size = 12, base_family = "sans") +
-    ggplot2::theme(plot.background = ggplot2::element_rect(fill = "#FAF8F3", colour = NA),
-      panel.background = ggplot2::element_rect(fill = "#FAF8F3", colour = NA),
+    ggplot2::theme(plot.background = ggplot2::element_rect(fill = background, colour = NA),
+      panel.background = ggplot2::element_rect(fill = background, colour = NA),
       panel.grid.minor = ggplot2::element_blank(),
       plot.title = ggplot2::element_text(face = "bold", size = 19),
       plot.subtitle = ggplot2::element_text(colour = "#555555", margin = ggplot2::margin(b = 14)),
@@ -32,27 +47,35 @@ plot_vinyl_database <- function(input, history_path, output_dir) {
   caption <- sprintf("%d distinct albums | %d records | %d artists. Multiple pressings count once.",
                      nrow(albums), nrow(records), length(unique(artist_key(albums$Artist))))
   fill <- function() ggplot2::scale_fill_manual(values = colours, drop = FALSE)
-  genre_count <- as.data.frame(table(Genre = factor(albums$Genre, levels = genre_levels)))
-  genre_count$Genre <- factor(genre_count$Genre, levels = rev(genre_levels))
+  genre_count <- as.data.frame(table(Shelf_Genre = factor(albums$Shelf_Genre, levels = genre_levels)))
+  genre_count$Shelf_Genre <- factor(genre_count$Shelf_Genre, levels = rev(genre_levels))
   plots <- list()
-  plots$collection_by_genre <- ggplot2::ggplot(genre_count, ggplot2::aes(Freq, Genre, fill = Genre)) +
+  plots$collection_by_genre <- ggplot2::ggplot(genre_count, ggplot2::aes(Freq, Shelf_Genre, fill = Shelf_Genre)) +
     ggplot2::geom_col(width = .65, show.legend = FALSE) +
     ggplot2::geom_text(ggplot2::aes(label = Freq), hjust = -.3) + fill() +
     ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0, .12))) +
     ggplot2::labs(title = "Your collection by genre", subtitle = "Artist classifications from the input database",
                   x = "Distinct albums", y = NULL, caption = caption) + theme
-  mood_count <- as.data.frame(table(Genre = factor(albums$Genre, levels = genre_levels),
-                                    Mood = factor(albums$Mood, levels = rev(mood_levels))))
+  mood_count <- as.data.frame(table(Shelf_Genre = factor(albums$Shelf_Genre, levels = genre_levels),
+                                    Shelf_Mood = factor(albums$Shelf_Mood, levels = rev(mood_levels))))
   mood_count$Label <- ifelse(mood_count$Freq == 0, "", as.character(mood_count$Freq))
-  plots$moods_by_genre <- ggplot2::ggplot(mood_count, ggplot2::aes(Genre, Mood, fill = Freq)) +
-    ggplot2::geom_tile(colour = "#FAF8F3", linewidth = 1.5) +
+  mood_max <- max(mood_count$Freq, 1L)
+  mood_colours <- MetBrewer::met.brewer("Hokusai2", n = 64, type = "continuous")
+  mood_scale_colours <- if (mood_max == 1L) c("#D9D9D9", mood_colours[[1]]) else
+    c("#D9D9D9", mood_colours)
+  mood_scale_values <- if (mood_max == 1L) c(0, 1) else
+    c(0, seq(1 / mood_max, 1, length.out = length(mood_colours)))
+  plots$moods_by_genre <- ggplot2::ggplot(mood_count, ggplot2::aes(Shelf_Genre, Shelf_Mood, fill = Freq)) +
+    ggplot2::geom_tile(colour = background, linewidth = 1.5) +
     ggplot2::geom_label(data = mood_count[mood_count$Freq > 0, ],
-      ggplot2::aes(label = Label), fill = "#FAF8F3", colour = "#222222", linewidth = 0, size = 3.5) +
-    ggplot2::scale_fill_gradientn(colours = MetBrewer::met.brewer("Hokusai2", n = 64, type = "continuous")) +
+      ggplot2::aes(label = Label), fill = background, colour = "#222222", linewidth = 0, size = 3.5) +
+    ggplot2::scale_fill_gradientn(colours = mood_scale_colours, values = mood_scale_values,
+                                  limits = c(0, mood_max),
+                                  breaks = unique(c(0, pretty(c(0, mood_max))))) +
     ggplot2::scale_x_discrete(labels = function(x) gsub(" / ", " /\n", x, fixed = TRUE)) +
     ggplot2::labs(title = "The moods within each genre", subtitle = "Numbers show distinct albums; rotation coverage prioritizes groups of four or more",
                   x = NULL, y = NULL, caption = caption) + theme
-  growth <- as.data.frame(table(albums$Addition_Date), stringsAsFactors = FALSE)
+  growth <- as.data.frame(table(albums$DateAddition), stringsAsFactors = FALSE)
   names(growth) <- c("Date", "Added"); growth$Date <- as.Date(growth$Date)
   growth <- growth[order(growth$Date), ]; growth$Total <- cumsum(growth$Added)
   plots$collection_growth <- ggplot2::ggplot(growth, ggplot2::aes(Date, Total)) +
@@ -62,18 +85,18 @@ plot_vinyl_database <- function(input, history_path, output_dir) {
     ggplot2::labs(title = "How the collection grows", subtitle = "Cumulative albums by their first recorded addition date",
                   x = NULL, y = "Distinct albums", caption = paste(caption,
                     if (nrow(growth) == 1) "All additions currently share one date; no growth trend is yet available." else "Dates reflect database entries, not inferred purchases.")) + theme
-  known <- albums[!is.na(albums$Year_Recording), , drop = FALSE]
-  decade <- as.data.frame(table(Decade = paste0(floor(known$Year_Recording / 10) * 10, "s"), Genre = known$Genre))
-  plots$release_decades <- ggplot2::ggplot(decade, ggplot2::aes(Decade, Freq, fill = Genre)) +
+  known <- albums[!is.na(albums$Year), , drop = FALSE]
+  decade <- as.data.frame(table(Decade = paste0(floor(known$Year / 10) * 10, "s"), Shelf_Genre = known$Shelf_Genre))
+  plots$release_decades <- ggplot2::ggplot(decade, ggplot2::aes(Decade, Freq, fill = Shelf_Genre)) +
     ggplot2::geom_col(width = .75) + fill() +
     ggplot2::labs(title = "The decades on your shelves", subtitle = "Original release years, rather than pressing years",
-                  x = NULL, y = "Distinct albums", caption = sprintf("%s %d albums have no release year and are omitted.", caption, sum(is.na(albums$Year_Recording)))) + theme
+                  x = NULL, y = "Distinct albums", caption = sprintf("%s %d albums have no release year and are omitted.", caption, sum(is.na(albums$Year)))) + theme
   artist_count <- aggregate(list(Albums = rep(1L, nrow(albums))),
-                            list(Artist = albums$Artist, Genre = albums$Genre), sum)
+                            list(Artist = albums$Artist, Shelf_Genre = albums$Shelf_Genre), sum)
   artist_count <- artist_count[order(-artist_count$Albums, artist_key(artist_count$Artist)), ]
   artist_count <- head(artist_count, 15)
   artist_count$Artist <- factor(artist_count$Artist, levels = rev(artist_count$Artist))
-  plots$most_collected_artists <- ggplot2::ggplot(artist_count, ggplot2::aes(Albums, Artist, fill = Genre)) +
+  plots$most_collected_artists <- ggplot2::ggplot(artist_count, ggplot2::aes(Albums, Artist, fill = Shelf_Genre)) +
     ggplot2::geom_col(width = .7) + ggplot2::geom_text(ggplot2::aes(label = Albums), hjust = -.3) +
     fill() + ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0, .15))) +
     ggplot2::labs(title = "Your most-collected artists", subtitle = "Top 15 by distinct albums; ties ordered alphabetically",
@@ -81,7 +104,7 @@ plot_vinyl_database <- function(input, history_path, output_dir) {
   albums$Rotation_Count <- 0L
   history_note <- "No saved rotation history yet."
   if (file.exists(history_path)) {
-    history <- read_rotation_history(history_path, dirname(output_dir))
+    history <- read_rotation_history(history_path)
     hit <- match(albums$Album_Key, history$albums$Album_Key)
     albums$Rotation_Count <- history$albums$Rotation_Count[hit]
     albums$Rotation_Count[is.na(albums$Rotation_Count)] <- 0L
@@ -91,10 +114,10 @@ plot_vinyl_database <- function(input, history_path, output_dir) {
   if (file.exists(history_path))
     albums$Current <- !is.na(hit) & history$albums$Last_Rotation_Run[hit] == history$run
   # Use saved history, not the updater toggle: this describes the last actual draw.
-  active_genres <- sort(unique(albums$Genre[albums$Current]))
+  active_genres <- sort(unique(albums$Shelf_Genre[albums$Current]))
   rotation_rows <- list()
   for (genre in active_genres) {
-    pool <- albums[albums$Genre == genre, , drop = FALSE]
+    pool <- albums[albums$Shelf_Genre == genre, , drop = FALSE]
     # Always include current picks, then fill up to 15 with the most selected.
     ranked <- order(!pool$Current, -pool$Rotation_Count, artist_key(pool$Artist), normalize(pool$Album))
     ranked <- ranked[pool$Rotation_Count[ranked] > 0L]
@@ -105,7 +128,7 @@ plot_vinyl_database <- function(input, history_path, output_dir) {
   }
   if (length(rotation_rows)) {
     rotation_view <- do.call(rbind, rotation_rows)
-    rotation_view <- rotation_view[order(rotation_view$Genre, rotation_view$Rotation_Count,
+    rotation_view <- rotation_view[order(rotation_view$Shelf_Genre, rotation_view$Rotation_Count,
                                          rotation_view$Current, artist_key(rotation_view$Artist)), ]
     rotation_view$Row <- factor(rotation_view$Album_Key, levels = rotation_view$Album_Key)
     labels <- paste(rotation_view$Artist, rotation_view$Album, sep = " - ")
@@ -147,7 +170,7 @@ plot_vinyl_database <- function(input, history_path, output_dir) {
     ggplot2::ggsave(file.path(output_dir, paste0(name, ".pdf")), plots[[name]],
       width = if (name %in% c("moods_by_genre", "rotation_coverage")) 12 else 11,
       height = if (name == "rotation_coverage") rotation_height else if (name == "most_collected_artists") 8 else 7,
-      device = grDevices::pdf, bg = "#FAF8F3")
+      device = grDevices::pdf, bg = background)
   }
   message("Saved ", length(plots), " plots to ", normalizePath(output_dir))
   invisible(plots)

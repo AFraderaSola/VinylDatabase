@@ -1,9 +1,14 @@
 #!/usr/bin/env Rscript
-# Run with source("01_update_vinyl_database.R") or Rscript.
-# All user-maintained data is in input/Database.xlsx.
+# Collection updater entry point.
+#
+# Run with source("01_update_vinyl_database.R") from the project R session or
+# with Rscript from the terminal. The script activates renv, validates the
+# read-only input workbook, and installs generated outputs transactionally.
+# Rotation changes only when explicitly requested below or on the command line.
 (function() {
   # EDIT THESE SETTINGS, then source this file.
   reset_rotation_history <- FALSE # Set TRUE for a reset; return to FALSE afterwards.
+  refresh_rotation <- FALSE # Set TRUE only when you want a new rotation.
   rotation_genres <- c(
     "Classical / Soundtrack" = FALSE,
     "Electronic" = FALSE,
@@ -26,6 +31,13 @@
       is.na(reset_rotation_history)
   ) {
     stop("reset_rotation_history must be TRUE or FALSE.")
+  }
+  if (
+    !is.logical(refresh_rotation) ||
+      length(refresh_rotation) != 1L ||
+      is.na(refresh_rotation)
+  ) {
+    stop("refresh_rotation must be TRUE or FALSE.")
   }
   included_genres <- names(rotation_genres)[rotation_genres]
 
@@ -57,7 +69,13 @@
   args <- if (sourced) character() else commandArgs(trailingOnly = TRUE)
   unknown <- args[
     !grepl("^--rotation-size=", args) &
-      !args %in% c("--rotation-only", "--reset-rotation-history", "--help")
+      !args %in%
+        c(
+          "--rotation-only",
+          "--refresh-rotation",
+          "--reset-rotation-history",
+          "--help"
+        )
   ]
   if (length(unknown)) {
     stop("Unknown option: ", paste(unknown, collapse = ", "))
@@ -65,8 +83,8 @@
   if ("--help" %in% args) {
     cat(
       'In R: source("01_update_vinyl_database.R")\n',
-      "Terminal: Rscript 01_update_vinyl_database.R [--rotation-only] [--rotation-size=N] [--reset-rotation-history]\n",
-      "Reads input/Database.xlsx and rebuilds workbooks in output/.\n"
+      "Terminal: Rscript 01_update_vinyl_database.R [--refresh-rotation|--rotation-only] [--rotation-size=N] [--reset-rotation-history]\n",
+      "Reads input/Database.xlsx and rebuilds workbooks in output/. Rotation is preserved unless explicitly refreshed.\n"
     )
     return(invisible(NULL))
   }
@@ -97,6 +115,8 @@
     rotation_only = "--rotation-only" %in% args,
     reset_rotation_history = reset_rotation_history ||
       "--reset-rotation-history" %in% args,
+    refresh_rotation = refresh_rotation ||
+      "--refresh-rotation" %in% args,
     rotation_genres = included_genres
   )
 })()
