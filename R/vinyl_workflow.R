@@ -208,9 +208,11 @@ shelf_moods <- sort(c("Intimate", "Reflective", "Melancholic", "Warm", "Groovy",
                 "Intense", "Immersive"), method = "radix")
 #' Build artist matching and sorting keys
 #' @param x Artist names.
-#' @return Normalized names with a leading "The" removed.
+#' @return Normalized names with a leading English "The" or Spanish definite
+#'   article ("El", "La", "Los", "Las") removed for matching, grouping,
+#'   counting and ordering.
 #' @noRd
-artist_key <- function(x) sub("^the ", "", normalize(x))
+artist_key <- function(x) sub("^(the|el|la|los|las) ", "", normalize(x))
 # Editable Artists!Shelf_Band values override these known associations.
 originating_bands <- c(
   "Robe" = "Extremoduro", "Nick Mason" = "Pink Floyd",
@@ -1006,8 +1008,11 @@ current_rotation <- function(records, history, output_dir) {
     result$Rotation_Order <- integer()
     return(result)
   }
-  previous <- file.path(output_dir, "Vinyl_On_Rotation.xlsx")
-  if (file.exists(previous)) {
+  # Prefer the current filename but accept the former name during migration.
+  previous <- file.path(output_dir, c("Vinyl_OnRotation.xlsx", "Vinyl_On_Rotation.xlsx"))
+  previous <- previous[file.exists(previous)]
+  if (length(previous)) {
+    previous <- previous[[1]]
     old <- as.data.frame(readxl::read_excel(previous))
     if (all(c("Artist", "Album") %in% names(old))) {
       old_keys <- key_for(old$Artist, old$Album)
@@ -1085,9 +1090,8 @@ run_update <- function(input, output_dir, rotation_size = NULL,
 
   # Everyday views contain only the fields needed for their purpose.
   collection_columns <- c(
-    "DateAddition", "Artist", "Album", "Edition", "Year", "Recording_Type",
-    "Metadata_Subgenre", "Shelf_Genre", "Shelf_Mood", "Review_Status",
-    "Last_Rotation_Date"
+    "Artist", "Year", "Album", "Edition", "Recording_Type",
+    "Shelf_Genre", "Shelf_Mood", "Metadata_Subgenre"
   )
   shelf_columns <- c(
     "Shelf_Order", "Shelf_Genre", "Shelf_Mood", "Shelf_Group",
@@ -1097,11 +1101,12 @@ run_update <- function(input, output_dir, rotation_size = NULL,
     "Rotation_Order", "Artist", "Album", "Edition", "Year", "Shelf_Genre",
     "Shelf_Mood", "Last_Rotation_Date", "Rotation_Count"
   )
-  # One detailed output holds sources, review information and selection details.
+  # Detailed output follows input identity, album metadata, shelf placement,
+  # classification provenance, lookup audit and rotation history.
   metadata_columns <- c(
-    "Collection_Row", "Shelf_Order", "Shelf_Band", "Shelf_Group",
-    "Shelf_Group_Genre", "Shelf_Group_Mood", "Artist", "Album", "Edition",
-    "DateAddition", "Year", "Recording_Type", "Metadata_Subgenre",
+    "Collection_Row", "DateAddition", "Artist", "Album", "Edition", "Year",
+    "Recording_Type", "Metadata_Subgenre",
+    "Shelf_Band", "Shelf_Group", "Shelf_Group_Genre", "Shelf_Group_Mood",
     "Shelf_Genre", "Shelf_Mood", "Shelf_Genre_Source", "Shelf_Mood_Source",
     "Suggested_Shelf_Genre", "Suggested_Shelf_Mood", "Review_Status",
     "MusicBrainz_URL", "Metadata_Retrieved", "Rotation_Order", "Rotation_Reason",
@@ -1112,20 +1117,26 @@ run_update <- function(input, output_dir, rotation_size = NULL,
   on.exit(unlink(staging,recursive=TRUE),add=TRUE)
   files <- character()
   if (!rotation_only) {
-    write_table(records[collection_columns],file.path(staging,"VinylCollection_completed.xlsx"),
+    # Keep this compact collection view alphabetical, then chronological within artist.
+    collection_index <- order(
+      artist_key(records$Artist), records$Year,
+      na.last = TRUE, method = "radix"
+    )
+    write_table(records[collection_index, collection_columns, drop = FALSE],
+                file.path(staging,"Vinyl_Collection.xlsx"),
                 "Collection","VinylCollection",template=input)
     shelf_view <- records[shelf_index, shelf_columns, drop = FALSE]
     shelf_view$Shelf_Genre <- records$Shelf_Group_Genre[shelf_index]
     shelf_view$Shelf_Mood <- records$Shelf_Group_Mood[shelf_index]
-    write_table(shelf_view,file.path(staging,"VinylShelf_Permanent.xlsx"),
+    write_table(shelf_view,file.path(staging,"Vinyl_Shelf.xlsx"),
                 "Permanent Shelf","VinylShelf",template=input)
-    files <- c(files,"VinylCollection_completed.xlsx","VinylShelf_Permanent.xlsx")
+    files <- c(files,"Vinyl_Collection.xlsx","Vinyl_Shelf.xlsx")
   }
-  write_table(rotation[rotation_columns],file.path(staging,"Vinyl_On_Rotation.xlsx"),
+  write_table(rotation[rotation_columns],file.path(staging,"Vinyl_OnRotation.xlsx"),
               "On Rotation","VinylRotation",template=input)
   write_table(records[metadata_columns],file.path(staging,"Vinyl_Metadata.xlsx"),
               "Metadata","VinylMetadata",template=input)
-  files <- c(files,"Vinyl_On_Rotation.xlsx","Vinyl_Metadata.xlsx")
+  files <- c(files,"Vinyl_OnRotation.xlsx","Vinyl_Metadata.xlsx")
   if (!identical(source_hash,unname(tools::md5sum(input)))) stop("Database changed during the run. Outputs were not replaced; rerun the updater.")
   for (name in files) different_paths(input,file.path(output_dir,name))
   # Install outputs and generated state together; restore prior files on failure.
@@ -1152,6 +1163,17 @@ run_update <- function(input, output_dir, rotation_size = NULL,
     }
     stop(e)
   })
+  obsolete_names <- "Vinyl_On_Rotation.xlsx"
+  if (!rotation_only) {
+    obsolete_names <- c(
+      obsolete_names, "VinylCollection_completed.xlsx", "VinylShelf_Permanent.xlsx"
+    )
+  }
+  for (obsolete_output in file.path(output_dir, obsolete_names)) {
+    if (file.exists(obsolete_output) && unlink(obsolete_output) != 0L)
+      warning("Could not remove obsolete output: ", obsolete_output,
+              ". Close it in Excel and remove it manually.")
+  }
   counts <- table(records$Shelf_Mood[!duplicated(records$Album_Key)])
   genre_counts <- table(records$Shelf_Genre)
   mood_summary <- if (length(counts)) paste0("Each mood has ", min(counts), "+ albums. ") else "No classified albums yet. "

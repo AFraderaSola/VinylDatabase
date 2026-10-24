@@ -40,7 +40,6 @@ plot_vinyl_database <- function(input, history_path, output_dir) {
       panel.background = ggplot2::element_rect(fill = background, colour = NA),
       panel.grid.minor = ggplot2::element_blank(),
       plot.title = ggplot2::element_text(face = "bold", size = 19),
-      plot.subtitle = ggplot2::element_text(colour = "#555555", margin = ggplot2::margin(b = 14)),
       plot.caption = ggplot2::element_text(colour = "#666666", hjust = 0),
       legend.position = "bottom", legend.title = ggplot2::element_blank(),
       plot.margin = ggplot2::margin(18, 24, 18, 18))
@@ -54,7 +53,7 @@ plot_vinyl_database <- function(input, history_path, output_dir) {
     ggplot2::geom_col(width = .65, show.legend = FALSE) +
     ggplot2::geom_text(ggplot2::aes(label = Freq), hjust = -.3) + fill() +
     ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0, .12))) +
-    ggplot2::labs(title = "Your collection by genre", subtitle = "Artist classifications from the input database",
+    ggplot2::labs(title = "Your collection by genre",
                   x = "Distinct albums", y = NULL, caption = caption) + theme
   mood_count <- as.data.frame(table(Shelf_Genre = factor(albums$Shelf_Genre, levels = genre_levels),
                                     Shelf_Mood = factor(albums$Shelf_Mood, levels = rev(mood_levels))))
@@ -73,7 +72,7 @@ plot_vinyl_database <- function(input, history_path, output_dir) {
                                   limits = c(0, mood_max),
                                   breaks = unique(c(0, pretty(c(0, mood_max))))) +
     ggplot2::scale_x_discrete(labels = function(x) gsub(" / ", " /\n", x, fixed = TRUE)) +
-    ggplot2::labs(title = "The moods within each genre", subtitle = "Numbers show distinct albums; rotation coverage prioritizes groups of four or more",
+    ggplot2::labs(title = "The moods within each genre",
                   x = NULL, y = NULL, caption = caption) + theme
   growth <- as.data.frame(table(albums$DateAddition), stringsAsFactors = FALSE)
   names(growth) <- c("Date", "Added"); growth$Date <- as.Date(growth$Date)
@@ -82,14 +81,14 @@ plot_vinyl_database <- function(input, history_path, output_dir) {
     (if (nrow(growth) > 1) ggplot2::geom_step(colour = colours[["Rock"]], linewidth = 1) else NULL) +
     ggplot2::geom_point(colour = colours[["Rock"]], size = 3) +
     ggplot2::scale_y_continuous(limits = c(0, NA), expand = ggplot2::expansion(mult = c(0, .1))) +
-    ggplot2::labs(title = "How the collection grows", subtitle = "Cumulative albums by their first recorded addition date",
+    ggplot2::labs(title = "How the collection grows",
                   x = NULL, y = "Distinct albums", caption = paste(caption,
                     if (nrow(growth) == 1) "All additions currently share one date; no growth trend is yet available." else "Dates reflect database entries, not inferred purchases.")) + theme
   known <- albums[!is.na(albums$Year), , drop = FALSE]
   decade <- as.data.frame(table(Decade = paste0(floor(known$Year / 10) * 10, "s"), Shelf_Genre = known$Shelf_Genre))
   plots$release_decades <- ggplot2::ggplot(decade, ggplot2::aes(Decade, Freq, fill = Shelf_Genre)) +
     ggplot2::geom_col(width = .75) + fill() +
-    ggplot2::labs(title = "The decades on your shelves", subtitle = "Original release years, rather than pressing years",
+    ggplot2::labs(title = "The decades on your shelves",
                   x = NULL, y = "Distinct albums", caption = sprintf("%s %d albums have no release year and are omitted.", caption, sum(is.na(albums$Year)))) + theme
   artist_count <- aggregate(list(Albums = rep(1L, nrow(albums))),
                             list(Artist = albums$Artist, Shelf_Genre = albums$Shelf_Genre), sum)
@@ -99,16 +98,14 @@ plot_vinyl_database <- function(input, history_path, output_dir) {
   plots$most_collected_artists <- ggplot2::ggplot(artist_count, ggplot2::aes(Albums, Artist, fill = Shelf_Genre)) +
     ggplot2::geom_col(width = .7) + ggplot2::geom_text(ggplot2::aes(label = Albums), hjust = -.3) +
     fill() + ggplot2::scale_x_continuous(expand = ggplot2::expansion(mult = c(0, .15))) +
-    ggplot2::labs(title = "Your most-collected artists", subtitle = "Top 15 by distinct albums; ties ordered alphabetically",
+    ggplot2::labs(title = "Your most-collected artists",
                   x = "Distinct albums", y = NULL, caption = caption) + theme
   albums$Rotation_Count <- 0L
-  history_note <- "No saved rotation history yet."
   if (file.exists(history_path)) {
     history <- read_rotation_history(history_path)
     hit <- match(albums$Album_Key, history$albums$Album_Key)
     albums$Rotation_Count <- history$albums$Rotation_Count[hit]
     albums$Rotation_Count[is.na(albums$Rotation_Count)] <- 0L
-    history_note <- paste("Saved rotation run", history$run, "| Counts cover tracked history only.")
   }
   albums$Current <- FALSE
   if (file.exists(history_path))
@@ -148,7 +145,7 @@ plot_vinyl_database <- function(input, history_path, output_dir) {
         ticks <- pretty(limits); ticks[ticks >= 0 & ticks == floor(ticks)]
       }, expand = ggplot2::expansion(mult = c(.02, .08))) +
       ggplot2::facet_wrap(~Panel, ncol = 1, scales = "free_y") +
-      ggplot2::labs(title = "What keeps coming back to rotation?", subtitle = history_note,
+      ggplot2::labs(title = "What keeps coming back to rotation?",
         x = "Times selected", y = NULL,
         caption = "Current picks plus the most-selected albums, up to 15 per genre. Panels summarize all albums in each genre. Compare counts within genres; smaller collections repeat more often. Only genres in the latest saved rotation are shown.") + theme +
       ggplot2::theme(panel.grid.major.y = ggplot2::element_blank(),
@@ -157,7 +154,7 @@ plot_vinyl_database <- function(input, history_path, output_dir) {
   } else {
     plots$rotation_coverage <- ggplot2::ggplot() +
       ggplot2::annotate("text", x = 0, y = 0, label = "Generate a rotation to see current picks and repeat counts.", size = 4) +
-      ggplot2::labs(title = "What keeps coming back to rotation?", subtitle = history_note,
+      ggplot2::labs(title = "What keeps coming back to rotation?",
                     caption = "No albums in the current database match the latest saved rotation.") +
       theme + ggplot2::theme(axis.title = ggplot2::element_blank(), axis.text = ggplot2::element_blank(),
                             panel.grid = ggplot2::element_blank())
@@ -165,12 +162,27 @@ plot_vinyl_database <- function(input, history_path, output_dir) {
   }
   # Vector PDFs overwrite only chart files; no input/history writes occur here.
   dir.create(output_dir, recursive = TRUE, showWarnings = FALSE)
+  plot_files <- c(
+    collection_by_genre = "Vinyl_01_Genres.pdf",
+    moods_by_genre = "Vinyl_02_MoodsByGenre.pdf",
+    collection_growth = "Vinyl_03_CollectionGrowth.pdf",
+    release_decades = "Vinyl_04_ReleaseDecades.pdf",
+    most_collected_artists = "Vinyl_05_MostCollectedArtists.pdf",
+    rotation_coverage = "Vinyl_06_RotationCoverage.pdf"
+  )
   for (name in names(plots)) {
     plots[[name]] <- plots[[name]] + ggplot2::labs(caption = paste(strwrap(plots[[name]]$labels$caption, width = 110), collapse = "\n"))
-    ggplot2::ggsave(file.path(output_dir, paste0(name, ".pdf")), plots[[name]],
+    ggplot2::ggsave(file.path(output_dir, plot_files[[name]]), plots[[name]],
       width = if (name %in% c("moods_by_genre", "rotation_coverage")) 12 else 11,
       height = if (name == "rotation_coverage") rotation_height else if (name == "most_collected_artists") 8 else 7,
       device = grDevices::pdf, bg = background)
+  }
+  # Remove only the former generated plot files after all replacements succeed.
+  legacy_dir <- file.path(project_root, "output", "plots")
+  if (dir.exists(legacy_dir) && normalizePath(legacy_dir) != normalizePath(output_dir)) {
+    legacy_files <- file.path(legacy_dir, c(paste0(names(plots), ".pdf"), ".DS_Store"))
+    unlink(legacy_files[file.exists(legacy_files)])
+    if (!length(list.files(legacy_dir, all.files = TRUE, no.. = TRUE))) unlink(legacy_dir)
   }
   message("Saved ", length(plots), " plots to ", normalizePath(output_dir))
   invisible(plots)

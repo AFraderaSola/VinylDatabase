@@ -42,10 +42,10 @@ The updater activates the project's R environment and creates four files in `out
 
 | File | Contents |
 |---|---|
-| `VinylCollection_completed.xlsx` | Enriched collection with generated metadata, shelf fields, review status and last rotation date |
-| `VinylShelf_Permanent.xlsx` | Permanent shelf order and family shelf placement |
-| `Vinyl_On_Rotation.xlsx` | Current rotation with shelf fields, selection count and last rotation date |
-| `Vinyl_Metadata.xlsx` | Full generated metadata, sources, suggestions and rotation details |
+| `Vinyl_Collection.xlsx` | Compact collection sorted by artist and release year, with album, edition, recording type and classification fields |
+| `Vinyl_Shelf.xlsx` | Permanent shelf order and family shelf placement |
+| `Vinyl_OnRotation.xlsx` | Current rotation with shelf fields, selection count and last rotation date |
+| `Vinyl_Metadata.xlsx` | Selected album metadata, shelf placement, classification sources, suggestions and rotation details |
 
 ## On rotation
 
@@ -91,11 +91,11 @@ Rscript --vanilla 01_update_vinyl_database.R --rotation-only
 Rscript --vanilla 01_update_vinyl_database.R --reset-rotation-history
 ```
 
-Technical details stay in Vinyl_Metadata.xlsx. Collection_Row identifies the input record, Shelf_Order links to the permanent shelf, and Rotation_Reason records the addition date used for the random selection. During rotation-only updates, metadata shelf positions are recalculated, but the saved permanent shelf is not refreshed. Run a full update after changing the collection to keep them aligned.
+Technical details stay in Vinyl_Metadata.xlsx. Collection_Row preserves input order and DateAddition records when the copy entered the collection. Shelf_Group and its genre/mood describe physical family placement; Shelf_Genre and Shelf_Mood remain the individual artist classification used for collection and rotation views, while their Source columns record provenance. Rotation_Reason records the addition date used for the random selection. During rotation-only updates, metadata shelf positions are recalculated, but the saved permanent shelf is not refreshed. Run a full update after changing the collection to keep them aligned.
 
 ## Shelf order
 
-The permanent shelf sorts by **`Shelf_Genre` → `Shelf_Mood` → artist family → artist → year**. Shelf fields and artist families sort alphabetically. Within a family, the band comes first, followed by solo artists alphabetically. A leading “The” is ignored in artist names; years sort oldest first, with unknown years last. Unclassified records remain at the end.
+The permanent shelf sorts by **`Shelf_Genre` → `Shelf_Mood` → artist family → artist → year**. Shelf fields and artist families sort alphabetically. Within a family, the band comes first, followed by solo artists alphabetically. Leading articles “The”, “El”, “La”, “Los” and “Las” are ignored whenever artist names are matched, grouped, counted or sorted; displayed names remain unchanged. Years sort oldest first, with unknown years last. Unclassified records remain at the end.
 
 Use **Artists → Shelf_Band** to place a solo artist beside their originating band. Every artist in the family shares one shelf genre and mood, chosen separately by the most common value among the family's artists present in the collection. Each artist gets one vote, regardless of album or pressing count; blank values are ignored. Ties favour the originating band's value when it is tied for first place, then alphabetical order. The collection and rotation keep each artist's own classification. For example, Robe follows Extremoduro, and Nick Mason and Roger Waters follow Pink Floyd. The metadata file records both the artist's classification and their shelf section.
 
@@ -115,7 +115,7 @@ Moods are subjective artist-level listening choices, not measurements from audio
 
 ## Collection plots
 
-Run `source("02_plot_vinyl_database.R")` to refresh six PDF charts in `output/plots/`. This is independent of the updater: it reads the manual input, generated metadata cache and saved rotation history without making online requests, selecting a new rotation, or changing counters.
+Run `source("02_plot_vinyl_database.R")` to refresh six numbered PDF charts directly in `output/`. Their `Vinyl_01_` through `Vinyl_06_` prefixes keep them in the logical order shown below. This is independent of the updater: it reads the manual input, generated metadata cache and saved rotation history without making online requests, selecting a new rotation, or changing counters.
 
 - **Collection by genre:** distinct album counts using each artist's classification.
 - **Moods by genre:** album counts for every genre/mood combination.
@@ -134,11 +134,11 @@ Open this repository as your R project. Its `.Rprofile` activates `renv`. Restor
 renv::restore(packages = c("readxl", "openxlsx", "zip", "xml2", "httr2", "ggplot2", "MetBrewer"))
 ```
 
-The updater uses R only. Generated outputs, local environments and personal settings stay outside Git; `input/Database.xlsx` is tracked.
+The updater uses R only. The input database, generated Excel/PDF outputs and generated state are tracked so collection results remain reproducible across machines. Local environments and personal settings stay outside Git.
 
 ```text
 input/Database.xlsx           Your collection and artist settings
-output/                      Generated Excel files and plots/ PDFs
+output/                      Generated Excel files and numbered Vinyl PDF charts
 state/metadata_cache.rds      Automatically maintained album metadata
 state/rotation_history.rds    Automatically maintained rotation counts and dates
 R/vinyl_workflow.R            Collection, shelf and rotation functions
@@ -150,7 +150,7 @@ renv.lock, renv/              R package environment
 README.md                    Generated project guide
 ```
 
-The updater treats the input workbook as read-only and creates no automatic backups. Commit the database and both state files when you want reproducible metadata and rotation history across machines.
+The updater treats the input workbook as read-only and creates no automatic backups. Commit the input database, generated outputs and both state files together so metadata, shelf views, plots and rotation history remain synchronized across machines.
 
 ## Edit this README
 

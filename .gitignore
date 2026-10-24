@@ -17,8 +17,6 @@ Thumbs.db
 # Local recovery copies; the working database is tracked in input/.
 backups/
 
-# Rebuild generated workbooks from input/Database.xlsx.
-output/
 renv/staging/
 
 # Transient rotation update lock.

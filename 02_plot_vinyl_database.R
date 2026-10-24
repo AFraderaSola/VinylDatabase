@@ -38,6 +38,6 @@
   plot_vinyl_database(
     file.path(root, "input", "Database.xlsx"),
     file.path(root, "state", "rotation_history.rds"),
-    file.path(root, "output", "plots")
+    file.path(root, "output")
   )
 })()
